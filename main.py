@@ -1,10 +1,12 @@
 import os
 import logging
 import argparse
+import re
 import requests as rq
 from ebooklib import epub
 from pathlib import Path
 from urllib.request import url2pathname
+from urllib.parse import urljoin
 from bs4 import BeautifulSoup as soup
 
 PWD = Path(os.path.realpath(__file__)).parent
@@ -42,30 +44,39 @@ def check_novel(main_url):
     page_title = page.title.get_text()
 
     # for test, we want get format like:
-    # <a href="\d*.html" title=".*">
+
+    # def tag_feature_filter(tag):
+    #     # <a href="\d*.html" title=".*">
+    #     return tag.name == 'a' and tag.has_attr('href') and tag.has_attr('title') and tag["href"].endswith(".html")
 
     def tag_feature_filter(tag):
-        return tag.name == 'a' and tag.has_attr('href') and tag.has_attr('title')
+        # <a href="\d*.html">
+        return tag.name == 'a' and tag.has_attr('href') and re.match(r".*\d+\.html", str(tag["href"]), re.I) is not None
 
     chapter_path = []
     for tag in page.find_all(tag_feature_filter):
         chapter_path.append(tag["href"])
+    chapter_path = sorted(list(set(chapter_path)))
     root_path = url2pathname(main_url)
     logger.info(f"Root Path: {root_path}")
 
     ch_list = []
     for idx in chapter_path:
-        join_url = root_path + idx
+        join_url = urljoin(root_path, idx)
         cache_file = CACHE_DIR / get_pathname_from_url(join_url)
         if not cache_file.exists():
             download_file(cache_file, join_url)
         with cache_file.open() as f:
             page = soup(f, "lxml")
         title = page.title.get_text()
-        main_content = page.find(id="content")
+        main_content = page.find("div", id="content")
+        main_content = "<p>" + "</p><p>".join([idx.replace("\n", "") for idx in main_content.stripped_strings]) + "</p>"
 
         # write one chapter
-        tmp_ch = epub.EpubHtml(title=title, file_name=idx)
+        epub_link = idx
+        if epub_link.find("/") >= 0:
+            epub_link = epub_link[epub_link.find("/") + 1:]
+        tmp_ch = epub.EpubHtml(title=title, file_name=epub_link)
         tmp_ch.set_content(f"<h1>{title}</h1>" + str(main_content))
         ch_list.append(tmp_ch)
 
