@@ -35,12 +35,12 @@ def download_file(dst, src):
     logger.info(f"Download and Save: {src}")
 
 
-def check_novel(main_url):
+def check_novel(main_url, encode):
     cache_file = CACHE_DIR / get_pathname_from_url(main_url)
     if not cache_file.exists():
         download_file(cache_file, main_url)
-    with cache_file.open() as f:
-        page = soup(f, "lxml")
+    with cache_file.open("rb") as f:
+        page = soup(f.read().decode(encode, 'ignore'), "lxml")
     page_title = page.title.get_text()
 
     # for test, we want get format like:
@@ -51,7 +51,7 @@ def check_novel(main_url):
 
     def tag_feature_filter(tag):
         # <a href="\d*.html">
-        return tag.name == 'a' and tag.has_attr('href') and re.match(r".*\d+\.html", str(tag["href"]), re.I) is not None
+        return tag.name == 'a' and tag.has_attr('href') and re.match(r".*/\d+\.html", str(tag["href"]), re.I) is not None
 
     chapter_path = []
     for tag in page.find_all(tag_feature_filter):
@@ -66,8 +66,8 @@ def check_novel(main_url):
         cache_file = CACHE_DIR / get_pathname_from_url(join_url)
         if not cache_file.exists():
             download_file(cache_file, join_url)
-        with cache_file.open() as f:
-            page = soup(f, "lxml")
+        with cache_file.open("rb") as f:
+            page = soup(f.read().decode(encode, 'ignore'), "lxml")
         title = page.title.get_text()
         main_content = page.find("div", id="content")
         main_content = "<p>" + "</p><p>".join([idx.replace("\n", "") for idx in main_content.stripped_strings]) + "</p>"
@@ -80,7 +80,7 @@ def check_novel(main_url):
         tmp_ch.set_content(f"<h1>{title}</h1>" + str(main_content))
         ch_list.append(tmp_ch)
 
-        logger.info(f"Handle: {cache_file}")
+        logger.info(f"Size: {len(main_content)} Handle: {cache_file}")
 
     book = epub.EpubBook()
     book.set_title(page_title)
@@ -145,8 +145,9 @@ if __name__ == "__main__":
     logger.info("Start from main.py")
     parser = argparse.ArgumentParser()
     parser.add_argument("-u", "--url", help="Main Page of the Novel Website", type=str)
+    parser.add_argument("-e", "--encode", help="HTML encode", type=str, default="utf-8")
     args = parser.parse_args()
     if args.url:
-        check_novel(args.url)
+        check_novel(args.url, args.encode)
     else:
         logger.error("Do Nothing!")
